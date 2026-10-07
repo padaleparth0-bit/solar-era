@@ -15,8 +15,9 @@ venv/
 backend/.venv/
 backend/venv/
 
-# SQLite databases
+# SQLite databases (ignore all except the seed database needed for deployment)
 *.sqlite
 *.sqlite3
 *.db
+!backend/solar_era.db
 

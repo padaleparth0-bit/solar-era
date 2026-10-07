@@ -95,13 +95,25 @@ app = FastAPI(
 )
 
 # Configure Cross-Origin Resource Sharing (CORS)
-# Allows the React frontend to communicate with FastAPI from dev servers
-origins = [
+# On Vercel services, frontend and backend share the same domain so /api/*
+# requests are same-origin. For preview deployments, custom domains, and
+# local dev, we allow additional origins.
+_default_origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+# Read additional allowed origins from env (comma-separated), e.g.:
+#   ALLOWED_ORIGINS=https://sol-era.vercel.app,https://solera.in
+_env_origins = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
+
+origins = _default_origins + _env_origins
 
 app.add_middleware(
     CORSMiddleware,
@@ -109,6 +121,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Allow *.vercel.app preview deployment origins
+    allow_origin_regex=r"https://.*\.vercel\.app",
 )
 
 
