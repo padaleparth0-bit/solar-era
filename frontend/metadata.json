@@ -1,0 +1,10 @@
+{
+  "name": "Solar Era",
+  "description": "AI-powered rooftop solar potential calculator, 3D roof panel visualizer, production tracker, certified Indian installer network, and PM Surya Ghar subsidy guide.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
