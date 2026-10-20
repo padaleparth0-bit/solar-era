@@ -2,6 +2,7 @@ from sqlalchemy import Column, String, Integer, Float, Boolean, Text, JSON, Date
 from sqlalchemy.orm import relationship
 from .database import Base
 from datetime import datetime, timezone
+import uuid
 
 
 class State(Base):
@@ -181,3 +182,30 @@ class CalculationLog(Base):
     payback_period_years = Column(Float, nullable=False)
     co2_annual_offset_kg = Column(Float, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class User(Base):
+    """
+    Registered user accounts for login/signup authentication.
+    Links to the Citizen table so authenticated users can access their
+    Green Citizen profile, certificates, and quiz scores across devices.
+    """
+    __tablename__ = "users"
+
+    id = Column(String(100), primary_key=True, default=lambda: f"usr_{uuid.uuid4().hex[:12]}")
+    full_name = Column(String(150), nullable=False)
+    email = Column(String(150), unique=True, nullable=False, index=True)
+    phone = Column(String(30), nullable=True)
+    hashed_password = Column(String(255), nullable=False)
+    city = Column(String(100), nullable=True)
+    state_code = Column(String(10), nullable=True)
+    avatar_url = Column(String(500), nullable=True)
+
+    # Link to Citizen table for Green Citizen features
+    citizen_id = Column(String(100), ForeignKey("citizens.id"), nullable=True, unique=True)
+    citizen = relationship("Citizen", foreign_keys=[citizen_id])
+
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+

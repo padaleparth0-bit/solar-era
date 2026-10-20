@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 
 try:
-    from app.database import get_db
-    from app.models import State, GovernmentScheme, Installer, Myth, QuizQuestion, QuoteRequest, Citizen
+    from app.database import get_db, engine, Base
+    from app.models import State, GovernmentScheme, Installer, Myth, QuizQuestion, QuoteRequest, Citizen, User
     from app.schemas import (
         SolarCalculationRequest,
         SolarCalculationResponse,
@@ -39,6 +39,12 @@ try:
         RoofAssessmentResponse,
         CarbonFootprintCalculationRequest,
         CarbonFootprintCalculationResponse,
+        UserRegisterRequest,
+        UserLoginRequest,
+        AuthTokenResponse,
+        UserProfileOut,
+        UserProfileUpdateRequest,
+        ChangePasswordRequest,
     )
     from app.calculator import (
         calculate_solar_potential,
@@ -46,9 +52,13 @@ try:
         calculate_roof_assessment_deterministic,
         CEA_GRID_EMISSION_FACTOR_KG_PER_KWH,
     )
+    from app.auth import (
+        hash_password, verify_password, create_access_token,
+        get_current_user, get_optional_user,
+    )
 except ImportError:
-    from backend.app.database import get_db
-    from backend.app.models import State, GovernmentScheme, Installer, Myth, QuizQuestion, QuoteRequest, Citizen
+    from backend.app.database import get_db, engine, Base
+    from backend.app.models import State, GovernmentScheme, Installer, Myth, QuizQuestion, QuoteRequest, Citizen, User
     from backend.app.schemas import (
         SolarCalculationRequest,
         SolarCalculationResponse,
@@ -75,12 +85,22 @@ except ImportError:
         RoofAssessmentResponse,
         CarbonFootprintCalculationRequest,
         CarbonFootprintCalculationResponse,
+        UserRegisterRequest,
+        UserLoginRequest,
+        AuthTokenResponse,
+        UserProfileOut,
+        UserProfileUpdateRequest,
+        ChangePasswordRequest,
     )
     from backend.app.calculator import (
         calculate_solar_potential,
         calculate_carbon_footprint,
         calculate_roof_assessment_deterministic,
         CEA_GRID_EMISSION_FACTOR_KG_PER_KWH,
+    )
+    from backend.app.auth import (
+        hash_password, verify_password, create_access_token,
+        get_current_user, get_optional_user,
     )
 
 
@@ -124,6 +144,15 @@ app.add_middleware(
     # Allow *.vercel.app preview deployment origins
     allow_origin_regex=r"https://.*\.vercel\.app",
 )
+
+
+@app.on_event("startup")
+def on_startup():
+    """Ensure database tables exist on server startup."""
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print(f"[DB Startup Warning] Could not verify/create tables: {e}")
 
 
 @app.get("/api/health", tags=["System"])
@@ -1099,10 +1128,181 @@ def calculate_carbon_footprint_endpoint(req: CarbonFootprintCalculationRequest):
     return CarbonFootprintCalculationResponse(**result)
 
 
+# ============================================================================
+# AUTHENTICATION ENDPOINTS
+# ============================================================================
+
+def _format_user_profile(user: User) -> UserProfileOut:
+    """Convert a User ORM row into the UserProfileOut response schema."""
+    citizen = user.citizen
+    created_str = ""
+    if user.created_at:
+        created_str = user.created_at.strftime("%Y-%m-%d") if not isinstance(user.created_at, str) else user.created_at
+    else:
+        created_str = datetime.now().strftime("%Y-%m-%d")
+
+    return UserProfileOut(
+        id=user.id,
+        fullName=user.full_name,
+        email=user.email,
+        phone=user.phone,
+        city=user.city,
+        stateCode=user.state_code,
+        avatarUrl=user.avatar_url,
+        citizenId=user.citizen_id,
+        certificateId=citizen.certificate_id if citizen else None,
+        totalQuizScore=citizen.total_quiz_score if citizen else 0,
+        quizzesCompletedCount=citizen.quizzes_completed_count if citizen else 0,
+        createdAt=created_str,
+    )
+
+
+@app.post("/api/auth/register", response_model=AuthTokenResponse, tags=["Authentication"])
+def register_user(data: UserRegisterRequest, db: Session = Depends(get_db)):
+    """
+    Register a new user account. Automatically creates a linked Green Citizen
+    profile so the user immediately gets a certificate ID and can track
+    quiz scores and eco progress.
+    """
+    # Check if email already taken
+    existing = db.query(User).filter(User.email == data.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="An account with this email already exists. Please login instead.")
+
+    # Create a linked Citizen profile for this user
+    cert_id = generate_unique_certificate_id(db)
+    citizen_id = f"cit_{uuid.uuid4().hex[:12]}"
+    citizen = Citizen(
+        id=citizen_id,
+        full_name=data.full_name,
+        email=data.email,
+        phone=data.phone,
+        city=data.city or "India",
+        state_code=(data.state_code or "DL").upper().strip(),
+        housing_type="independent_house",
+        household_members=4,
+        monthly_electricity_bill=3500.0,
+        monthly_units_kwh=450.0,
+        solar_system_kw=0.0,
+        certificate_id=cert_id,
+        total_quiz_score=0,
+        quizzes_completed_count=0,
+        completed_action_ids=[],
+        unlocked_badge_ids=["b1"],
+    )
+    db.add(citizen)
+    db.flush()  # Ensure citizen.id is available for FK
+
+    # Create the user account
+    user = User(
+        full_name=data.full_name,
+        email=data.email,
+        phone=data.phone,
+        hashed_password=hash_password(data.password),
+        city=data.city,
+        state_code=data.state_code,
+        citizen_id=citizen.id,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    db.refresh(citizen)
+
+    token = create_access_token(user.id, user.email)
+    return AuthTokenResponse(
+        success=True,
+        token=token,
+        user=_format_user_profile(user),
+    )
+
+
+@app.post("/api/auth/login", response_model=AuthTokenResponse, tags=["Authentication"])
+def login_user(data: UserLoginRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate an existing user with email and password.
+    Returns a JWT token valid for 72 hours.
+    """
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    if not verify_password(data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account is deactivated.")
+
+    token = create_access_token(user.id, user.email)
+    return AuthTokenResponse(
+        success=True,
+        token=token,
+        user=_format_user_profile(user),
+    )
+
+
+@app.get("/api/auth/me", response_model=UserProfileOut, tags=["Authentication"])
+def get_my_profile(user: User = Depends(get_current_user)):
+    """
+    Get the authenticated user's profile (requires Bearer token).
+    """
+    return _format_user_profile(user)
+
+
+@app.put("/api/auth/profile", response_model=UserProfileOut, tags=["Authentication"])
+def update_my_profile(
+    data: UserProfileUpdateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Update the authenticated user's profile fields and sync changes
+    to the linked Citizen record for certificates.
+    """
+    if data.full_name is not None:
+        user.full_name = data.full_name.strip()
+    if data.phone is not None:
+        user.phone = data.phone
+    if data.city is not None:
+        user.city = data.city.strip()
+    if data.state_code is not None:
+        user.state_code = data.state_code.upper().strip()
+    if data.avatar_url is not None:
+        user.avatar_url = data.avatar_url
+
+    # Sync changes to linked citizen profile
+    if user.citizen_id and user.citizen:
+        citizen = user.citizen
+        if data.full_name is not None:
+            citizen.full_name = user.full_name
+        if data.phone is not None:
+            citizen.phone = user.phone
+        if data.city is not None:
+            citizen.city = user.city
+        if data.state_code is not None:
+            citizen.state_code = user.state_code
+
+    db.commit()
+    db.refresh(user)
+    return _format_user_profile(user)
+
+
+@app.post("/api/auth/change-password", tags=["Authentication"])
+def change_password(
+    data: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Change the authenticated user's password.
+    """
+    if not verify_password(data.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    
+    user.hashed_password = hash_password(data.new_password)
+    db.commit()
+    return {"success": True, "message": "Password changed successfully."}
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
     # Run the server on port 8000 with auto-reload
     uvicorn.run("main:app", host="127.0.0.1", port=port, reload=True)
-
-

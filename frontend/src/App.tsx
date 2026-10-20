@@ -6,9 +6,12 @@ import { CarbonFootprintTracker } from './components/CarbonFootprintTracker';
 import { InstallersDirectory } from './components/InstallersDirectory';
 import { QuizzesAndMyths } from './components/QuizzesAndMyths';
 import { GovernmentSchemes } from './components/GovernmentSchemes';
+import { AccountPage } from './components/AccountPage';
+import { AuthModal } from './components/AuthModal';
+import { AuthProvider } from './context/AuthContext';
 import { Sun, ExternalLink } from 'lucide-react';
 
-export default function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState<string>('calculator');
   const [selectedStateCode, setSelectedStateCode] = useState<string>('DL');
 
@@ -63,7 +66,16 @@ export default function App() {
             setSelectedStateCode={setSelectedStateCode}
           />
         )}
+
+        {activeTab === 'account' && (
+          <AccountPage
+            onNavigateTab={setActiveTab}
+          />
+        )}
       </main>
+
+      {/* Auth Modal triggered from anywhere in the app */}
+      <AuthModal />
 
       {/* Footer */}
       <footer className="bg-white border-t border-stone-200 py-10 px-4 sm:px-6 lg:px-8 text-xs text-stone-600 shadow-inner">
@@ -160,5 +172,13 @@ export default function App() {
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

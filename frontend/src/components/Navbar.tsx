@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Sun, Sparkles, ShieldCheck, MapPin, Zap } from 'lucide-react';
+import { Sun, Sparkles, ShieldCheck, MapPin, Zap, User, LogIn } from 'lucide-react';
 import { IndianStateSolarData } from '../types';
 import { fetchStates } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
   activeTab: string;
@@ -16,6 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   selectedStateCode,
   setSelectedStateCode,
 }) => {
+  const { user, isAuthenticated, openAuthModal } = useAuth();
   const [states, setStates] = useState<IndianStateSolarData[]>([]);
 
   useEffect(() => {
@@ -44,6 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'schemes', label: 'Govt Schemes & Subsidy', icon: '🏛️' },
     { id: 'installers', label: 'Certified Installers', icon: '👷' },
     { id: 'quiz', label: 'Quizzes & Myths', icon: '💡' },
+    { id: 'account', label: isAuthenticated ? 'My Account & Cert' : 'Sign In / Account', icon: '👤' },
   ];
 
   return (
@@ -121,11 +124,36 @@ export const Navbar: React.FC<NavbarProps> = ({
             href="https://pmsuryaghar.gov.in"
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden sm:inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all hover:scale-102"
+            className="hidden xl:inline-flex items-center gap-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
             <span>PM Surya Ghar Portal</span>
           </a>
+
+          {/* User Account / Sign In Button */}
+          {isAuthenticated && user ? (
+            <button
+              onClick={() => setActiveTab('account')}
+              className="flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100/90 border border-emerald-300/80 px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-900 transition-all cursor-pointer shadow-xs hover:scale-102"
+              title="View your account and certificate"
+            >
+              <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-black">
+                {user.fullName ? user.fullName.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <span className="hidden sm:inline max-w-[100px] truncate">{user.fullName.split(' ')[0]}</span>
+              <span className="text-[10px] bg-emerald-200 text-emerald-800 px-1.5 py-0.2 rounded-full font-bold">
+                Cert
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={() => openAuthModal('login')}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm shadow-emerald-600/20 transition-all hover:scale-102 cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </button>
+          )}
         </div>
       </div>
 

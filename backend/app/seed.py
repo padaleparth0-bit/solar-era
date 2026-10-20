@@ -6,7 +6,7 @@ backend_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from app.database import engine, SessionLocal, Base
-from app.models import State, GovernmentScheme, Installer, Myth, QuizQuestion
+from app.models import State, GovernmentScheme, Installer, Myth, QuizQuestion, Citizen, User
 from app.solar_seed_data import STATES, INSTALLERS, MYTHS, QUIZ_QUESTIONS, GOVERNMENT_SCHEMES
 
 
@@ -115,12 +115,58 @@ def seed_database():
                 source="Ministry of New & Renewable Energy (MNRE) / PM Surya Ghar Portal (pmsuryaghar.gov.in)"
             ))
 
+    # --- Seed Demo User & Citizen ---
+    print("Step 7: Seeding Demo Citizen & User Account...")
+    demo_email = "rahul.sharma@example.com"
+    existing_user = db.query(User).filter_by(email=demo_email).first()
+    if not existing_user:
+        try:
+            from app.auth import hash_password
+            # Seed or find demo citizen
+            demo_cit = db.query(Citizen).filter_by(email=demo_email).first()
+            if not demo_cit:
+                demo_cit = Citizen(
+                    id="cit_rahul_demo",
+                    full_name="Rahul Sharma",
+                    email=demo_email,
+                    phone="+91 98765 43210",
+                    city="New Delhi",
+                    state_code="DL",
+                    housing_type="independent_house",
+                    household_members=4,
+                    monthly_electricity_bill=3800.0,
+                    monthly_units_kwh=480.0,
+                    solar_system_kw=3.3,
+                    certificate_id="IND-GC-2026-DEL-1001",
+                    total_quiz_score=150,
+                    quizzes_completed_count=3,
+                    completed_action_ids=["rec-1"],
+                    unlocked_badge_ids=["b1", "b2"],
+                )
+                db.add(demo_cit)
+                db.flush()
+
+            demo_user = User(
+                id="usr_rahul_demo",
+                full_name="Rahul Sharma",
+                email=demo_email,
+                phone="+91 98765 43210",
+                hashed_password=hash_password("Password123"),
+                city="New Delhi",
+                state_code="DL",
+                citizen_id=demo_cit.id,
+            )
+            db.add(demo_user)
+            print(f"Created demo user: {demo_email} (password: Password123) with certificate {demo_cit.certificate_id}")
+        except Exception as e:
+            print(f"Demo user seed error: {e}")
+
     db.commit()
     db.close()
 
     print("==================================================")
     print("[SUCCESS] Database seeded: backend/solar_era.db")
-    print("Tables populated: states, installers, myths, quiz_questions, government_schemes")
+    print("Tables populated: states, installers, myths, quiz_questions, government_schemes, citizen, users")
     print("==================================================")
 
 

@@ -5,5 +5,10 @@ python-dotenv>=1.0.1
 sqlalchemy>=2.0.38
 httpx>=0.28.0
 
+# Authentication
+passlib[bcrypt]>=1.7.4
+pyjwt>=2.8.0
+bcrypt>=4.0.0
+
 # Testing (dev)
 pytest>=8.0.0

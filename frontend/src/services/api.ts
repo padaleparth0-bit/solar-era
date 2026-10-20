@@ -334,3 +334,153 @@ export async function calculateCarbonFootprintApi(
 }
 
 
+// ============================================================================
+// Authentication API
+// ============================================================================
+
+const AUTH_TOKEN_KEY = 'solar_era_auth_token';
+
+/** Get the stored JWT token */
+export function getAuthToken(): string | null {
+  try { return localStorage.getItem(AUTH_TOKEN_KEY); } catch { return null; }
+}
+
+/** Store the JWT token */
+export function setAuthToken(token: string): void {
+  try { localStorage.setItem(AUTH_TOKEN_KEY, token); } catch {}
+}
+
+/** Clear the JWT token */
+export function clearAuthToken(): void {
+  try { localStorage.removeItem(AUTH_TOKEN_KEY); } catch {}
+}
+
+/** Build headers with auth token */
+function authHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+export interface UserProfile {
+  id: string;
+  fullName: string;
+  email: string;
+  phone?: string | null;
+  city?: string | null;
+  stateCode?: string | null;
+  avatarUrl?: string | null;
+  citizenId?: string | null;
+  certificateId?: string | null;
+  totalQuizScore?: number;
+  quizzesCompletedCount?: number;
+  createdAt: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  token: string;
+  user: UserProfile;
+}
+
+export interface RegisterPayload {
+  full_name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  city?: string;
+  state_code?: string;
+}
+
+export interface LoginPayload {
+  email: string;
+  password: string;
+}
+
+/**
+ * Register a new user account.
+ */
+export async function registerUser(payload: RegisterPayload): Promise<AuthResponse> {
+  const res = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Registration failed');
+  }
+  const data: AuthResponse = await res.json();
+  setAuthToken(data.token);
+  return data;
+}
+
+/**
+ * Login with email and password.
+ */
+export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Login failed');
+  }
+  const data: AuthResponse = await res.json();
+  setAuthToken(data.token);
+  return data;
+}
+
+/**
+ * Get the current authenticated user's profile.
+ */
+export async function fetchMyProfile(): Promise<UserProfile> {
+  const res = await fetch('/api/auth/me', { headers: authHeaders() });
+  if (!res.ok) {
+    if (res.status === 401) { clearAuthToken(); }
+    throw new Error('Not authenticated');
+  }
+  return res.json();
+}
+
+/**
+ * Update the current user's profile.
+ */
+export async function updateMyProfile(payload: Partial<UserProfile>): Promise<UserProfile> {
+  const res = await fetch('/api/auth/profile', {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Profile update failed');
+  }
+  return res.json();
+}
+
+/**
+ * Change the current user's password.
+ */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<{success: boolean; message: string}> {
+  const res = await fetch('/api/auth/change-password', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Password change failed');
+  }
+  return res.json();
+}
+
+/**
+ * Logout — clears the stored token.
+ */
+export function logoutUser(): void {
+  clearAuthToken();
+}

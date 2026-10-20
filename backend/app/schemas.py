@@ -568,3 +568,83 @@ class CarbonFootprintCalculationResponse(BaseModel):
     dataSource: str
 
 
+# ============================================================================
+# Authentication Schemas
+# ============================================================================
+
+class UserRegisterRequest(BaseModel):
+    """Request body for POST /api/auth/register"""
+    full_name: str = Field(..., min_length=2, max_length=150)
+    email: str = Field(...)
+    password: str = Field(..., min_length=6, max_length=128)
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    state_code: Optional[str] = None
+
+    @field_validator("email")
+    def validate_email(cls, v):
+        v = (v or "").strip().lower()
+        if not re.match(r"^[^@]+@[^@]+\.[^@]+$", v):
+            raise ValueError("Invalid email address format")
+        return v
+
+    @field_validator("full_name")
+    def validate_name(cls, v):
+        v = (v or "").strip()
+        if len(v) < 2:
+            raise ValueError("Full name must be at least 2 characters long")
+        return v
+
+
+class UserLoginRequest(BaseModel):
+    """Request body for POST /api/auth/login"""
+    email: str = Field(...)
+    password: str = Field(...)
+
+    @field_validator("email")
+    def validate_email(cls, v):
+        return (v or "").strip().lower()
+
+
+class AuthTokenResponse(BaseModel):
+    """Response from login/register containing the JWT and user info"""
+    success: bool = True
+    token: str
+    user: 'UserProfileOut'
+
+
+class UserProfileOut(BaseModel):
+    """Public user profile info (no password)"""
+    id: str
+    fullName: str
+    email: str
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    stateCode: Optional[str] = None
+    avatarUrl: Optional[str] = None
+    citizenId: Optional[str] = None
+    certificateId: Optional[str] = None
+    totalQuizScore: Optional[int] = 0
+    quizzesCompletedCount: Optional[int] = 0
+    createdAt: str
+
+
+class UserProfileUpdateRequest(BaseModel):
+    """Request body for PUT /api/auth/profile"""
+    full_name: Optional[str] = Field(None, alias="fullName", min_length=2, max_length=150)
+    phone: Optional[str] = None
+    city: Optional[str] = None
+    state_code: Optional[str] = Field(None, alias="stateCode")
+    avatar_url: Optional[str] = Field(None, alias="avatarUrl")
+
+    class Config:
+        populate_by_name = True
+
+
+class ChangePasswordRequest(BaseModel):
+    """Request body for POST /api/auth/change-password"""
+    current_password: str = Field(..., alias="currentPassword")
+    new_password: str = Field(..., alias="newPassword", min_length=6, max_length=128)
+
+    class Config:
+        populate_by_name = True
